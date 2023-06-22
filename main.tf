@@ -1,145 +1,109 @@
 resource "aws_vpc" "main" {
- cidr_block = "10.0.0.0/16"
+  cidr_block = var.vpc_cidr
 
- tags = {
-   Name = "main"
- }
-}
-
-resource "aws_subnet" "public0" {
- vpc_id = aws_vpc.main.id
- cidr_block = "10.0.0.0/24"
- availability_zone = "us-east-1a"
- tags = {
-   Name = "public0"
+  tags = {
+    Name = "main"
   }
 }
 
-resource "aws_subnet" "public1" {
- vpc_id = aws_vpc.main.id
- cidr_block = "10.0.1.0/24"
- availability_zone = "us-east-1b"
- tags = {
-   Name = "public1"
+resource "aws_subnet" "public" {
+  count = length(var.public_subnet_cidr)
+
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.public_subnet_cidr[count.index]
+  availability_zone = var.availability_zone[count.index]
+
+  tags = {
+    Name = "public${count.index}"
   }
 }
 
-resource "aws_subnet" "private0" {
- vpc_id = aws_vpc.main.id
- cidr_block = "10.0.2.0/24"
- availability_zone = "us-east-1a"
+resource "aws_subnet" "private" {
+  count             = length(var.public_subnet_cidr)
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_subnet_cidr[count.index]
+  availability_zone = var.availability_zone[count.index]
 
- tags = {
-   Name = "private0"
-  }
-}
-
-resource "aws_subnet" "private1" {
- vpc_id = aws_vpc.main.id
- cidr_block = "10.0.3.0/24"
- availability_zone = "us-east-1b"
- tags = {
-   Name = "private1"
+  tags = {
+    Name = "private${count.index}"
   }
 }
 
 resource "aws_internet_gateway" "main" {
- vpc_id = aws_vpc.main.id
+  vpc_id = aws_vpc.main.id
 
- tags = {
-   Name = "main"
- }
+  tags = {
+    Name = "main"
+  }
 }
 
-resource "aws_eip" "nat0" {
- vpc = true
 
- tags = {
-   Name = "nat0"
- }
+resource "aws_eip" "nat" {
+  count = length(var.public_subnet_cidr)
+
+  vpc = true
+
+  tags = {
+    Name = "nat${count.index}"
+  }
 }
 
-resource "aws_eip" "nat1" {
- vpc = true
+resource "aws_nat_gateway" "main" {
+  count = length(var.public_subnet_cidr)
 
- tags = {
-   Name = "nat1"
- }
-}
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
 
-resource "aws_nat_gateway" "main0" {
- allocation_id = aws_eip.nat0.id
- subnet_id     = aws_subnet.public0.id
- tags = {
-   Name = "main0"
- }
-}
-
-resource "aws_nat_gateway" "main1" {
- allocation_id = aws_eip.nat1.id
- subnet_id     = aws_subnet.public1.id
- tags = {
-   Name = "main1"
- }
+  tags = {
+    Name = "main${count.index}"
+  }
 }
 
 resource "aws_route_table" "public" {
- vpc_id = aws_vpc.main.id
+  vpc_id = aws_vpc.main.id
 
- route {
-   cidr_block = "0.0.0.0/0"
-   gateway_id = aws_internet_gateway.main.id
- }
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
 
- tags = {
-   Name = "public"
- }
+  tags = {
+    Name = "public"
+  }
 }
 
-resource "aws_route_table" "private0" {
- vpc_id = aws_vpc.main.id
+resource "aws_route_table" "private" {
+  count = length(var.public_subnet_cidr)
 
- route {
-   cidr_block = "0.0.0.0/0"
-   nat_gateway_id = aws_nat_gateway.main0.id
- }
+  vpc_id = aws_vpc.main.id
 
- tags = {
-   Name = "private0"
- }
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main[count.index].id
+  }
+
+  tags = {
+    Name = "private{count.index}"
+  }
 }
 
-resource "aws_route_table" "private1" {
- vpc_id = aws_vpc.main.id
+resource "aws_route_table_association" "public" {
+  count = length(var.public_subnet_cidr)
 
- route {
-   cidr_block = "0.0.0.0/0"
-   nat_gateway_id = aws_nat_gateway.main1.id
- }
-
- tags = {
-   Name = "private1"
- }
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
 }
 
-resource "aws_route_table_association" "public0" {
- subnet_id = aws_subnet.public0.id
- route_table_id = aws_route_table.public.id
+resource "aws_route_table_association" "private" {
+  count = length(var.public_subnet_cidr)
+
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
 }
 
-resource "aws_route_table_association" "public1" {
- subnet_id = aws_subnet.public1.id
- route_table_id = aws_route_table.public.id
-}
+ 
 
-resource "aws_route_table_association" "private0" {
- subnet_id = aws_subnet.private0.id
- route_table_id = aws_route_table.private0.id
-}
 
-resource "aws_route_table_association" "private1" {
- subnet_id = aws_subnet.private1.id
- route_table_id = aws_route_table.private1.id
-}
+
 
 ## Adeed new line at end of file
